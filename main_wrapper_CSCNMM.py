@@ -1,3 +1,5 @@
+# OFFICIAL TRAINING CODE FOR CSCNMM
+
 import numpy as np
 import sys
 
@@ -35,12 +37,7 @@ print(args)
 
 
 torch.autograd.set_detect_anomaly(True)
-# torch.use_deterministic_algorithms(True)
 
-# seed = args.seed
-# torch.manual_seed(seed)
-# np.random.seed(seed)
-# random.seed(seed)
 
 num_workers = args.num_workers
 adjust_step = 2
@@ -192,35 +189,6 @@ def main(seed):
     if args.criterion == 'BCE':
         criterion = torch.nn.BCELoss()
         each_criterion = torch.nn.BCELoss(reduction='none')
-        
-    elif args.criterion == 'ASL':
-        criterion = AsymmetricLossOptimized(reduction='mean')
-        each_criterion = AsymmetricLossOptimized(reduction='none')
-        
-    elif args.criterion == 'Focal':
-        criterion = MultiLabelFocalLoss(alpha=0.25, gamma=2, reduction='mean')
-        each_criterion = MultiLabelFocalLoss(alpha=0.25, gamma=2, reduction='none')
-                    
-    elif args.criterion == 'Hill':
-        criterion = Hill(reduction='mean')
-        each_criterion = Hill(reduction='none')
-
-    elif args.criterion == 'MLLSC':
-        criterion = MLLSC(tau_pos=0.55, tau_neg=0.6, gamma=2.0, margin=1.0, reduction='mean')
-        each_criterion = MLLSC(tau_pos=0.55, tau_neg=0.6, gamma=2.0, margin=1.0, reduction='none')
-        
-    elif args.criterion == 'SPLC':
-        criterion = SPLC(tau=0.6, change_epoch=1, margin=1.0, gamma=2.0, reduction='mean')
-        each_criterion = SPLC(tau=0.6, change_epoch=1, margin=1.0, gamma=2.0)
-    
-    elif args.criterion == 'SoftMarginLoss':
-        criterion = nn.MultiLabelSoftMarginLoss()
-        each_criterion = nn.MultiLabelSoftMarginLoss(reduction='none')
-        
-    elif args.criterion == 'GCE':
-        criterion = GCE_MultiLabelLoss(reduction='mean')  
-        each_criterion = GCE_MultiLabelLoss(reduction='none')
-          
     else:
         criterion = torch.nn.BCELoss()
         each_criterion = torch.nn.BCELoss(reduction='none')
@@ -232,15 +200,12 @@ def main(seed):
     criterion_ranking = MultiLabelRankingLoss(margin=1.0, reduction='none')
     
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    
-    # optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
     
     multi_lr = [args.lr for i in range(len(args.task))]
     
     # Define the scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=0)
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-
 
     print(f'Current Noise Setting: {args.noise_type}, {args.noise_ratio}')
 
@@ -275,10 +240,7 @@ def main(seed):
             mems_all[t] = np.zeros((num_train_samples[t], args.nbins[t], args.epochs))
             divers_all[t] = np.zeros((num_train_samples[t], args.nbins[t], args.epochs))
             probs_all[t] = np.zeros((num_train_samples[t], args.nbins[t], args.epochs))
-        # else:
-        #     loss_all[t] = np.zeros((num_train_samples[t], args.epochs))
-        #     pred_all[t] = np.zeros((num_train_samples[t], args.epochs))
-        #     ranks_all[t] = np.zeros((num_train_samples[t], args.epochs))
+
             
     stats_over_epochs = {"Loss": [], "Mems": [], "Predictions": [], "Ranks": [], "Diversity": []}
     save_dir = 'visualizations/CSNMM'
@@ -365,15 +327,6 @@ def main(seed):
                         probs_all[t][x_ids,:, epoch-1] = y_pred.data.detach().clone().cpu().numpy()
                         divers_all[t][x_ids,:, epoch-1] = diversity
                         
-                    
-                    # else:
-                    #     y_pred_one_hot = torch.argmax(y_pred, dim=1)
-                    #     loss_all[t][x_ids, epoch-1] = each_loss.data.detach().clone().cpu().numpy().flatten()
-                    #     pred_all[t][x_ids, epoch-1] = y_pred_one_hot.data.detach().clone().cpu().numpy().squeeze()
-                        
-                                                             
-                                                            
-
                     
                    # Correction Starts
                     if epoch > args.warmup and args.corr:
@@ -517,59 +470,6 @@ def main(seed):
         
 
 
-
-from sklearn.metrics import confusion_matrix
-
-def analyze_errors(pred_all, true_all, epoch, num_classes):
-    """
-    Perform error analysis for multi-label predictions.
-    
-    Args:
-        pred_all: List of predicted Torch tensors for all tasks [N, C, E].
-        true_all: List of true Torch tensors for all tasks [N, C, E].
-        epoch: The epoch index for which to perform analysis.
-        num_classes: Number of classes for the task.
-        
-    Returns:
-        per_class_confusion: Dictionary of confusion matrices for each class.
-        overall_confusion: Overall confusion matrix for all classes.
-    """
-    per_class_confusion = {}
-    all_pred = []
-    all_true = []
-    
-
-    predictions = pred_all[:, :, epoch-1]
-    ground_truth = true_all[:, :, epoch-1]
-    
-    for class_idx in range(num_classes):
-        pred_class = predictions[:, class_idx]
-        true_class = ground_truth[:, class_idx]
-        
-        # Compute confusion matrix for this class
-        cm = confusion_matrix(true_class, pred_class, labels=[1, 0])
-        per_class_confusion[f"Class_{class_idx}"] = cm
-        
-        
-        # Append to overall lists
-        all_pred.append(pred_class)
-        all_true.append(true_class)
-    
-    # Combine all classes for overall confusion matrix
-    all_pred_flat = np.concatenate(all_pred).flatten()
-    all_true_flat = np.concatenate(all_true).flatten()
-    overall_confusion = confusion_matrix(all_true_flat, all_pred_flat, labels=[1, 0])
-    
-    print("Overall Confusion Matrix:")
-    print(overall_confusion)
-    print("TP:", overall_confusion[0, 0], "FN:", overall_confusion[0, 1], 
-          "FP:", overall_confusion[1, 0], "FP:", overall_confusion[1, 1])
-    
-    return per_class_confusion, overall_confusion
-
-
-    
-               
 if __name__ == '__main__':
     seeds = args.seed
     test_map, test_f1, test_f1_class = [], [], []
